@@ -177,6 +177,14 @@ public class CliMain {
                     out.println(network);
                     return;
                 }
+                case getdaostatus: {
+                    if (new SimpleMethodOptionParser(args).parse().isForHelp()) {
+                        out.println(client.getMethodHelp(method));
+                        return;
+                    }
+                    out.println(client.getDaoStatus());
+                    return;
+                }
                 case getbalance: {
                     var opts = new GetBalanceOptionParser(args).parse();
                     if (opts.isForHelp()) {
@@ -578,6 +586,19 @@ public class CliMain {
                     out.printf("trade %s payment started message sent%n", tradeId);
                     return;
                 }
+                case confirmpaymentstartedxmr: {
+                    var opts = new GetTradeOptionParser(args).parse();
+                    if (opts.isForHelp()) {
+                        out.println(client.getMethodHelp(method));
+                        return;
+                    }
+                    var tradeId = opts.getTradeId();
+                    var txId = opts.getTxId();
+                    var txKey = opts.getTxKey();
+                    client.confirmPaymentStartedXmr(tradeId, txId, txKey);
+                    out.printf("trade %s payment started message sent%n", tradeId);
+                    return;
+                }
                 case confirmpaymentreceived: {
                     var opts = new GetTradeOptionParser(args).parse();
                     if (opts.isForHelp()) {
@@ -865,6 +886,8 @@ public class CliMain {
             stream.format(rowFormat, getversion.name(), "", "Get server version");
             stream.println();
             stream.format(rowFormat, getnetwork.name(), "", "Get BTC network:  mainnet, testnet3, or regtest");
+            stream.println();
+            stream.format(rowFormat, getdaostatus.name(), "", "Get DAO synchronized status:  true or false");
             stream.println();
             stream.format(rowFormat, getbalance.name(), "[--currency-code=<bsq|btc>]", "Get server wallet balances");
             stream.println();

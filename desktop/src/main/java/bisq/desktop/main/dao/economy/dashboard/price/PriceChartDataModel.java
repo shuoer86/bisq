@@ -19,6 +19,9 @@ package bisq.desktop.main.dao.economy.dashboard.price;
 
 import bisq.desktop.components.chart.ChartDataModel;
 
+import bisq.core.dao.state.DaoStateService;
+import bisq.core.dao.state.model.blockchain.Tx;
+import bisq.core.dao.state.model.governance.Issuance;
 import bisq.core.trade.statistics.TradeStatistics3;
 import bisq.core.trade.statistics.TradeStatisticsManager;
 
@@ -30,18 +33,30 @@ import java.time.Instant;
 
 import java.util.AbstractMap;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.TreeMap;
 import java.util.function.Function;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class PriceChartDataModel extends ChartDataModel {
     private final TradeStatisticsManager tradeStatisticsManager;
-    private Map<Long, Double> bsqUsdPriceByInterval, bsqBtcPriceByInterval, btcUsdPriceByInterval;
+    private final DaoStateService daoStateService;
+    private Map<Long, Double>
+            bsqUsdPriceByInterval,
+            bsqBtcPriceByInterval,
+            btcUsdPriceByInterval,
+            bsqUsdMarketCapByInterval,
+            bsqBtcMarketCapByInterval;
+    private final Function<Issuance, Long> blockTimeOfIssuanceFunction;
 
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -49,10 +64,16 @@ public class PriceChartDataModel extends ChartDataModel {
     ///////////////////////////////////////////////////////////////////////////////////////////
 
     @Inject
-    public PriceChartDataModel(TradeStatisticsManager tradeStatisticsManager) {
+    public PriceChartDataModel(TradeStatisticsManager tradeStatisticsManager, DaoStateService daoStateService) {
         super();
 
         this.tradeStatisticsManager = tradeStatisticsManager;
+        this.daoStateService = daoStateService;
+
+        blockTimeOfIssuanceFunction = memoize(issuance -> {
+            int height = daoStateService.getStartHeightOfCurrentCycle(issuance.getChainHeight()).orElse(0);
+            return daoStateService.getBlockTime(height);
+        });
     }
 
 
@@ -65,6 +86,8 @@ public class PriceChartDataModel extends ChartDataModel {
         bsqUsdPriceByInterval = null;
         bsqBtcPriceByInterval = null;
         btcUsdPriceByInterval = null;
+        bsqUsdMarketCapByInterval = null;
+        bsqBtcMarketCapByInterval = null;
     }
 
 
@@ -98,21 +121,38 @@ public class PriceChartDataModel extends ChartDataModel {
         return bsqUsdPriceByInterval;
     }
 
+    Map<Long, Double> getBsqUsdMarketCapByInterval() {
+        if (bsqUsdMarketCapByInterval != null) {
+            return bsqUsdMarketCapByInterval;
+        }
+        bsqUsdMarketCapByInterval = getBsqMarketCapByInterval(tradeStatistics -> tradeStatistics.getCurrency().equals("BSQ") ||
+                        tradeStatistics.getCurrency().equals("USD"),
+                PriceChartDataModel::getAverageBsqUsdPrice);
+        return bsqUsdMarketCapByInterval;
+    }
+
     Map<Long, Double> getBsqBtcPriceByInterval() {
         if (bsqBtcPriceByInterval != null) {
             return bsqBtcPriceByInterval;
         }
-
         bsqBtcPriceByInterval = getPriceByInterval(tradeStatistics -> tradeStatistics.getCurrency().equals("BSQ"),
                 PriceChartDataModel::getAverageBsqBtcPrice);
         return bsqBtcPriceByInterval;
+    }
+
+    Map<Long, Double> getBsqBtcMarketCapByInterval() {
+        if (bsqBtcMarketCapByInterval != null) {
+            return bsqBtcMarketCapByInterval;
+        }
+        bsqBtcMarketCapByInterval = getBsqMarketCapByInterval(tradeStatistics -> tradeStatistics.getCurrency().equals("BSQ"),
+                PriceChartDataModel::getAverageBsqBtcPrice);
+        return bsqBtcMarketCapByInterval;
     }
 
     Map<Long, Double> getBtcUsdPriceByInterval() {
         if (btcUsdPriceByInterval != null) {
             return btcUsdPriceByInterval;
         }
-
         btcUsdPriceByInterval = getPriceByInterval(tradeStatistics -> tradeStatistics.getCurrency().equals("USD"),
                 PriceChartDataModel::getAverageBtcUsdPrice);
         return btcUsdPriceByInterval;
@@ -199,7 +239,7 @@ public class PriceChartDataModel extends ChartDataModel {
     private Map<Long, Double> getPriceByInterval(Collection<TradeStatistics3> collection,
                                                  Predicate<TradeStatistics3> collectionFilter,
                                                  Function<TradeStatistics3, Long> groupByDateFunction,
-                                                 Predicate<Long> dateFilter,
+                                                 LongPredicate dateFilter,
                                                  Function<List<TradeStatistics3>, Double> getAveragePriceFunction) {
         return collection.stream()
                 .filter(collectionFilter)
@@ -220,5 +260,71 @@ public class PriceChartDataModel extends ChartDataModel {
                 .filter(collectionFilter)
                 .filter(tradeStatistics -> dateFilter.test(tradeStatistics.getDateAsLong() / 1000))
                 .collect(Collectors.toList()));
+    }
+
+    private Map<Long, Double> getBsqMarketCapByInterval(Predicate<TradeStatistics3> collectionFilter,
+                                                        Function<List<TradeStatistics3>, Double> getAveragePriceFunction) {
+        var toTimeIntervalFn = toCachedTimeIntervalFn();
+        return getBsqMarketCapByInterval(tradeStatisticsManager.getObservableTradeStatisticsSet(),
+                collectionFilter,
+                tradeStatistics -> toTimeIntervalFn.applyAsLong(Instant.ofEpochMilli(tradeStatistics.getDateAsLong())),
+                dateFilter,
+                getAveragePriceFunction);
+    }
+
+    private Map<Long, Double> getBsqMarketCapByInterval(Collection<TradeStatistics3> tradeStatistics3s,
+                                                        Predicate<TradeStatistics3> collectionFilter,
+                                                        Function<TradeStatistics3, Long> groupByDateFunction,
+                                                        LongPredicate dateFilter,
+                                                        Function<List<TradeStatistics3>, Double> getAveragePriceFunction) {
+        Map<Long, List<TradeStatistics3>> pricesGroupedByDate = tradeStatistics3s.stream()
+                .filter(collectionFilter)
+                .collect(Collectors.groupingBy(groupByDateFunction));
+
+        Stream<Map.Entry<Long, List<TradeStatistics3>>> filteredByDate = pricesGroupedByDate.entrySet().stream()
+                .filter(entry -> dateFilter.test(entry.getKey()));
+
+        Map<Long, Double> resultsByDateBucket = filteredByDate
+                .map(entry -> new AbstractMap.SimpleEntry<>(
+                        entry.getKey(),
+                        getAveragePriceFunction.apply(entry.getValue())))
+                .filter(e -> e.getValue() > 0d)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (u, v) -> v, HashMap::new));
+
+        // apply the available BSQ to the data set
+        NavigableMap<Long, Double> totalSupplyByInterval = getOutstandingBsqByInterval();
+        resultsByDateBucket.replaceAll((dateKey, result) -> {
+            double availableBsq = issuanceAsOfDate(totalSupplyByInterval, dateKey) / 100d;
+            return result * availableBsq; // market cap (price * available BSQ)
+        });
+        return resultsByDateBucket;
+    }
+
+    private double issuanceAsOfDate(NavigableMap<Long, Double> totalSupplyByInterval, long dateKey) {
+        var entry = totalSupplyByInterval.floorEntry(dateKey);
+        return entry != null ? entry.getValue() : 0d;
+    }
+
+    private NavigableMap<Long, Double> getOutstandingBsqByInterval() {
+        Stream<Tx> txStream = daoStateService.getBlocks().stream()
+                .flatMap(b -> b.getTxs().stream())
+                .filter(tx -> tx.getBurntBsq() > 0);
+        Map<Long, Double> simpleBurns = txStream
+                .collect(Collectors.groupingBy(
+                        tx -> toTimeInterval(Instant.ofEpochMilli(tx.getTime())),
+                        Collectors.summingDouble(Tx::getBurntBsq)));
+        simpleBurns.replaceAll((k, v) -> -v);
+
+        Collection<Issuance> issuanceSet = daoStateService.getIssuanceItems();
+        Map<Long, Double> simpleIssuance = issuanceSet.stream()
+                .collect(Collectors.groupingBy(
+                        issuance -> toTimeInterval(Instant.ofEpochMilli(blockTimeOfIssuanceFunction.apply(issuance))),
+                        Collectors.summingDouble(Issuance::getAmount)));
+
+        NavigableMap<Long, Double> supplyByInterval = new TreeMap<>(getMergedMap(simpleIssuance, simpleBurns, Double::sum));
+
+        final double[] partialSum = {daoStateService.getGenesisTotalSupply().value};
+        supplyByInterval.replaceAll((k, v) -> partialSum[0] += v);
+        return supplyByInterval;
     }
 }

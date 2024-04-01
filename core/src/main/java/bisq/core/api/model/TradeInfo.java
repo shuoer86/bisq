@@ -93,6 +93,10 @@ public class TradeInfo implements Payload {
     private final boolean isCompleted;
     private final String contractAsJson;
     private final ContractInfo contract;
+    private final String autoConfTxId;
+    private final String autoConfTxKey;
+    private final boolean hasFailed;
+    private final String errorMessage;
     // Optional BSQ swap trade protocol details (post v1).
     private BsqSwapTradeInfo bsqSwapTradeInfo;
     private final String closingStatus;
@@ -124,8 +128,12 @@ public class TradeInfo implements Payload {
         this.isCompleted = builder.isCompleted();
         this.contractAsJson = builder.getContractAsJson();
         this.contract = builder.getContract();
+        this.autoConfTxId = builder.getAutoConfTxId();
+        this.autoConfTxKey = builder.getAutoConfTxKey();
         this.bsqSwapTradeInfo = null;
         this.closingStatus = builder.getClosingStatus();
+        this.hasFailed = builder.isHasFailed();
+        this.errorMessage = builder.getErrorMessage();
     }
 
     public static TradeInfo toNewTradeInfo(BsqSwapTrade trade, String role) {
@@ -184,7 +192,7 @@ public class TradeInfo implements Payload {
                 .withPhase(bsqSwapTrade.getTradePhase().name())
                 // N/A for bsq-swaps: tradePeriodState, isDepositPublished, isDepositConfirmed
                 // N/A for bsq-swaps: isPaymentStartedMessageSent, isPaymentReceivedMessageSent, isPayoutPublished
-                // N/A for bsq-swaps: isCompleted, contractAsJson, contract
+                // N/A for bsq-swaps: isCompleted, contractAsJson, contract, autoConfTxId, autoConfTxKey
                 .withClosingStatus(closingStatus)
                 .build();
         tradeInfo.bsqSwapTradeInfo = toBsqSwapTradeInfo(bsqSwapTrade, isMyOffer, numConfirmations);
@@ -243,6 +251,10 @@ public class TradeInfo implements Payload {
                 .withContractAsJson(trade.getContractAsJson())
                 .withContract(contractInfo)
                 .withClosingStatus(closingStatus)
+                .withAutoConfTxId(trade.getCounterCurrencyTxId() == null ? "" : trade.getCounterCurrencyTxId())
+                .withAutoConfTxKey(trade.getCounterCurrencyExtraData() == null ? "" : trade.getCounterCurrencyExtraData())
+                .withHasFailed(trade.hasFailed())
+                .withErrorMessage(trade.hasErrorMessage() ? trade.getErrorMessage() : "")
                 .build();
     }
 
@@ -278,6 +290,10 @@ public class TradeInfo implements Payload {
                         .setIsPaymentReceivedMessageSent(isPaymentReceivedMessageSent)
                         .setIsPayoutPublished(isPayoutPublished)
                         .setIsCompleted(isCompleted)
+                        .setHasFailed(hasFailed)
+                        .setErrorMessage(errorMessage == null ? "" : errorMessage)
+                        .setAutoConfTxId(autoConfTxId == null ? "" : autoConfTxId)
+                        .setAutoConfTxKey(autoConfTxKey == null ? "" : autoConfTxKey)
                         .setClosingStatus(closingStatus);
         if (offer.isBsqSwapOffer()) {
             protoBuilder.setBsqSwapTradeInfo(bsqSwapTradeInfo.toProtoMessage());
@@ -318,6 +334,10 @@ public class TradeInfo implements Payload {
                 .withContractAsJson(proto.getContractAsJson())
                 .withContract((ContractInfo.fromProto(proto.getContract())))
                 .withClosingStatus(proto.getClosingStatus())
+                .withHasFailed(proto.getHasFailed())
+                .withErrorMessage(proto.getErrorMessage())
+                .withAutoConfTxId(proto.getAutoConfTxId())
+                .withAutoConfTxKey(proto.getAutoConfTxKey())
                 .build();
 
         if (proto.getOffer().getIsBsqSwapOffer())
@@ -357,6 +377,10 @@ public class TradeInfo implements Payload {
                 ", contract=" + contract + "\n" +
                 ", bsqSwapTradeInfo=" + bsqSwapTradeInfo + "\n" +
                 ", closingStatus=" + closingStatus + "\n" +
+                ", hasFailed=" + hasFailed + "\n" +
+                ", errorMessage=" + errorMessage + "\n" +
+                ", autoConfTxId=" + autoConfTxId + "\n" +
+                ", autoConfTxKey=" + autoConfTxKey + "\n" +
                 '}';
     }
 }

@@ -56,9 +56,13 @@ public final class TradeInfoV1Builder {
     private boolean isPaymentReceivedMessageSent;
     private boolean isPayoutPublished;
     private boolean isCompleted;
+    private boolean hasFailed;
     private String contractAsJson;
     private ContractInfo contract;
     private String closingStatus;
+    private String errorMessage;
+    private String autoConfTxId;
+    private String autoConfTxKey;
 
     public TradeInfoV1Builder withOffer(OfferInfo offer) {
         this.offer = offer;
@@ -180,6 +184,16 @@ public final class TradeInfoV1Builder {
         return this;
     }
 
+    public TradeInfoV1Builder withHasFailed(boolean hasFailed) {
+        this.hasFailed = hasFailed;
+        return this;
+    }
+
+    public TradeInfoV1Builder withErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+        return this;
+    }
+
     public TradeInfoV1Builder withContractAsJson(String contractAsJson) {
         this.contractAsJson = contractAsJson;
         return this;
@@ -192,6 +206,16 @@ public final class TradeInfoV1Builder {
 
     public TradeInfoV1Builder withClosingStatus(String closingStatus) {
         this.closingStatus = closingStatus;
+        return this;
+    }
+
+    public TradeInfoV1Builder withAutoConfTxId(String autoConfTxId) {
+        this.autoConfTxId = autoConfTxId;
+        return this;
+    }
+
+    public TradeInfoV1Builder withAutoConfTxKey(String autoConfTxKey) {
+        this.autoConfTxKey = autoConfTxKey;
         return this;
     }
 
